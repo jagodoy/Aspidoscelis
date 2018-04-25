@@ -1,0 +1,745 @@
+---
+title: "Aspidocelis_cytb"
+author: "JA Godoy"
+date: "25/4/2018"
+output: html_document
+---
+#Descrpción
+lkjsdlkjasdlkjasldkj
+
+#Inputs
+Los archivos originales de inpput son jkhsdklfjhlkjshadfkljhasdf
+
+la ruta del multifasta es: /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas
+la carpeta dond evamos a trabajar es: /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/
+
+#Separar las secuencias por poblaciones
+Necesito un archivo donde estén marcadas las secuencias solo por poblaciones
+```{bash}
+cd /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/
+
+nano remove_sample_number.sh
+________________________________________
+while IFS='' read -r line || [[ -n "$line" ]]; 
+do
+if [[ $line = \>*  ]] 
+	then
+	cut -f1,2,4 -d "_" 	
+	else
+	echo "${line}"
+	fi ;
+
+done < "$1"
+_______________________________________
+
+chmod +x remove_sample_number.sh
+./remove_sample_number.sh /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas > /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_pop.fasta  
+
+
+
+
+nano remove_sample_tag.sh
+________________________________________
+while IFS='' read -r line || [[ -n "$line" ]]; 
+do
+if [[ $line = \>*  ]] 
+	then
+	cut -f1,2 -d "_" 		
+	else
+	echo "${line}"
+	fi ;
+
+done < "$1"
+_______________________________________
+
+chmod +x remove_sample_tag.sh
+
+./remove_sample_tag.sh /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas > /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_all.fasta  
+```
+
+
+#Fasta files separados por poblaciones a analizar por separado:
+$Esto no está arreglado!
+```{bash}
+cd /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/
+
+ARRAY=($(grep ">" /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas | cut -d "_" -f4 | tr -d ">" | sort | uniq))
+for i in  ${ARRAY[*]}; 
+do
+grep "${i}" /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas -A 1  | grep -v "^--$" > /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_pop-${i}.fasta
+done
+```
+
+
+#Set global parameters
+CUIDADO! copiar fuera porque setwd no funciona en Rmd
+```{r}
+
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+library(RColorBrewer)
+library(tidyr)
+
+setwd("/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/")
+
+```
+
+#Analisis
+##Haplotype networks
+###Calculate how each sample relate to the rest 
+list haplotype function
+```{r}
+
+library("pegas")
+
+list_haplotypes <- function(fastafile ) {
+  #read fasta
+  x <- read.dna(file=fastafile,format="fasta")
+  #Calculate haplotypes
+  h <- haplotype(x)
+  h <- sort(h, what = "label")
+  #Calculate network
+  net <- haploNet(h)
+  #calculate matrix
+  ind.hap<-with(
+    stack(setNames(attr(h, "index"), rownames(h))), 
+    table(hap=ind, pop=rownames(x)[values]) )
+  
+  ind.hap.df <- as.data.frame(ind.hap) %>% filter(Freq!=0) %>% arrange(hap) %>% select (hap,pop)
+  
+  return(ind.hap.df)
+  
+}
+
+
+#PLOT NETWORKS
+plot_network <- function(fastafile, outfile, leg.x, leg.y, text.size ) {
+  #read fasta
+  x <- read.dna(file=fastafile,format="fasta")
+  #Calculate haplotypes
+  h <- haplotype(x)
+  h <- sort(h, what = "label")
+  #Calculate network
+  net <- haploNet(h)
+  #calculate matrix
+  ind.hap<-with(
+    stack(setNames(attr(h, "index"), rownames(h))), 
+    table(hap=ind, pop=rownames(x)[values]) )
+  
+  setEPS()
+  postscript(outfile)
+  plot(net, size=attr(net, "freq"), scale.ratio = 5, cex = text.size, offset = 5, pie=ind.hap, fast=TRUE)
+  legend(leg.x ,leg.y , colnames(ind.hap), col=rainbow(ncol(ind.hap)), pch=12,ncol=3)
+  dev.off()
+  
+}
+
+  data.frame(lapply(bob, as.character), )
+
+#Per_pop samples
+all.df <- list_haplotypes("/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas") %>%
+  mutate (hap=paste("H_",sprintf("%02d",as.numeric(as.roman(as.character(hap)))),sep = "")    ,
+          sample=pop )%>%
+  separate(pop, c("sp", "locus", "samplecode", "pop"), sep = "_")  %>%
+  arrange(hap) 
+
+ind.hap.pop <- all.df %>%
+                group_by(hap,pop)%>%
+                summarise(count=n()) %>%
+                spread(key = pop,value = count,fill=0)
+
+write.csv(ind.hap.pop, "/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_pop_haplotypes.csv", row.names = FALSE)
+
+#Draw haplotypes piecharts per location
+ind.hap.pop <- read.csv("/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_pop_haplotypes.csv") %>%
+   gather(pop, Freq, -hap)
+$Si quieres contar por haplogrupo e vex de por haplotipo cambiar por qué agrupar
+Hap <-   filter (ind.hap.pop, Freq>0) %>% group_by(., pop) %>% summarise(., sample.size = sum(Freq) ) #Counts how many haplotypes appear per population 
+hap_df<- full_join(ind.hap.pop, Hap) %>%
+  mutate (hap_freq=Freq/sample.size )
+
+#Create colour palette
+
+hap_col <- read.csv("/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/haplogroups.csv", sep=";") 
+
+color <- c()
+for ( i in 1:length(hap_col$n)){
+color[i] <- brewer.pal( hap_col$n[i], as.character(hap_col$palette[i]))[hap_col$intensity[i]]
+}
+
+hap_col$color <- color
+ 
+hap_df_col <-full_join(hap_df,hap_col)
+color2 <- select(hap_df_col,hap,color) %>% unique() %>% arrange(hap)
+
+
+
+
+#Reorder factors so I can see the haplogroups together
+
+# #Create colour palette
+# hap_col <- select(hap_df, hap_name, Freq) %>% 
+#   filter(Freq>=1) %>% 
+#   group_by(hap_name) %>% 
+#   summarise(present_pops=n()) %>%
+#   mutate(singleton=ifelse(present_pops==1,1,0)) %>%
+#   group_by(singleton) %>% 
+#   mutate(number = seq_along(singleton),
+#           col=ifelse(singleton==1, colorRampPalette(brewer.pal(9,"Greys"))(19)[number],
+#           col=ifelse(singleton==1, colorRampPalette(brewer.pal(9,"BrBG"))(19)[number],
+#           brewer.pal(6,"Set1")[number] ))%>%
+#   arrange(singleton) )
+# #Reorder factors so I can see first hared and then private
+# hap_df$hap_name <- factor(hap_df$hap_name, levels = hap_col$hap_name)
+
+
+#Raw plot trials
+pd <- position_dodge(0.6) # move them .05 to the left and right
+theme_set(theme_gray(base_size = 24))
+ggplot(hap_df_col, aes(x=sample.size/2, y=hap_freq, fill=factor(hap), width = sample.size )) +
+  geom_bar(position="fill", stat="identity") + 
+  coord_polar("y") +
+  theme_bw() +
+  facet_wrap(~ pop, nrow = 3, ncol = 5) +
+  scale_fill_manual(values = color2$color)+
+  theme(axis.text.x = element_blank(), legend.position="bottom") +
+  guides(fill=guide_legend(ncol = 5,byrow=TRUE))
+
+ggsave("/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/networks/per_pop_pies_color.eps")
+write.csv(ind.hap.pop, "/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop_haplotypes.csv")
+
+```
+
+##Diversity  and differentiation stats
+Stats per pop
+ in the /Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/diversity_neutrality_and_differentiation/fasta folder I place the
+ /Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed.fasta file as there is no 
+```{r}
+library("pegas")
+library("PopGenome")
+#Dentro de una carpeta generada solo para ello pon el fasta original
+per_pop <- readData("/Users/jagodoy/ownCloud/Publico/Eurasian_lynx_phylogeography/mitogenomes_lynxes/diversity_neutrality_and_differentiation/fasta")
+get.sum.data(per_pop)
+get.individuals(per_pop)
+#Camboa pops a lineages aquí si quieres
+per_pop <- set.populations(per_pop,list(
+c("c_ll_ya_0138", "c_ll_ya_0139", "c_ll_ya_0140", "c_ll_ya_0142", "c_ll_ya_0143", "c_ll_ya_0145", "c_ll_ya_0146", "c_ll_ya_0147"),
+c("c_ll_ki_0086", "c_ll_ki_0088", "c_ll_ki_0090", "c_ll_ki_0091", "c_ll_ki_0092", "c_ll_ki_0093", "c_ll_ki_0094", "c_ll_ki_0095", "c_ll_ki_0096", "c_ll_ki_0097", "c_ll_ki_0098", "c_ll_ki_0099", "c_ll_ki_0100", "c_ll_ki_0101", "c_ll_ki_0102"),
+c("c_ll_vl_0107", "c_ll_vl_0108", "c_ll_vl_0109", "c_ll_vl_0110", "c_ll_vl_0112", "c_ll_vl_0113", "c_ll_vl_0128", "c_ll_vl_0132"),
+c("c_ll_tu_0153", "c_ll_tu_0157", "c_ll_tu_0158", "c_ll_tu_0159", "c_ll_tu_0165", "c_ll_tu_0166"),
+c("c_ll_mo_0181", "c_ll_mo_0184", "c_ll_mo_0186", "c_ll_mo_0187", "c_ll_mo_0188", "c_ll_mo_0189", "c_ll_mo_0190", "c_ll_mo_0191"),
+c("c_ll_cr_0205", "c_ll_cr_0206", "c_ll_cr_0207", "c_ll_cr_0208", "c_ll_cr_0209", "c_ll_cr_0212"),
+c("c_ll_la_0044", "c_ll_la_0047", "c_ll_la_0048", "c_ll_la_0052", "c_ll_la_0053", "c_ll_la_0054"),
+c("c_ll_po_0001", "c_ll_po_0002", "c_ll_po_0003", "c_ll_po_0004", "c_ll_po_0005", "c_ll_po_0007", "c_ll_po_0010", "c_ll_po_0011", "c_ll_po_0014", "c_ll_po_0017", "c_ll_po_0019", "c_ll_po_0105", "c_ll_po_0106"),
+c("c_ll_no_0063", "c_ll_no_0064", "c_ll_no_0065", "c_ll_no_0068", "c_ll_no_0069", "c_ll_no_0070", "c_ll_no_0071", "c_ll_no_0072", "c_ll_no_0074", "c_ll_no_0075", "c_ll_no_0076", "c_ll_no_0077", "c_ll_no_0078", "c_ll_no_0079", "c_ll_no_0080", "c_ll_no_0081", "c_ll_no_0082"),
+c("c_ll_ba_0214", "c_ll_ba_0215", "c_ll_ba_0216"),
+c("c_ll_ur_0194", "c_ll_ur_0195", "c_ll_ur_0196", "c_ll_ur_0199", "c_ll_ur_0200", "c_ll_ur_0203") ))
+
+per_pop@region.data
+per_pop@region.data@biallelic.sites
+per_pop@region.data@biallelic.matrix
+per_pop@region.data@populations # pop with numbers
+per_pop@region.data@populations2 # pop with names
+per_pop@region.data@polyallelic.sites # no tenemos sitios con más de dos SNPs
+
+#Neutrality stats
+per_pop <- neutrality.stats(per_pop)
+get.neutrality(per_pop)[[1]]
+get.neutrality(per_pop)[[2]]
+get.neutrality(per_pop)[[3]]
+
+per_pop@Tajima.D[1,]
+per_pop@Fu.Li.F[1,]
+per_pop@Fu.Li.D
+per_pop@n.segregating.sites[1,]
+
+#Diversity stats
+per_pop <- F_ST.stats(per_pop)
+per_pop<- diversity.stats(per_pop)
+
+#Nucleotide diversity CAUTION!! The nucleotide diversity (average pairwise nucleotide differences) within and between the populations. 
+#Have to be divided by the slot per_pop@n.sites to obtain diversity per site (see also diversity.stats).
+per_pop@region.stats@nucleotide.diversity # Nucleotide diversity matrix
+per_pop@nuc.diversity.between # Nucleotide diversity between the populations (matrix ina list)
+per_pop@nuc.diversity.within/per_pop@n.sites # Nucleotide diversity within the populations
+
+#Haplotype diversity
+per_pop@region.stats@haplotype.diversity # Haplotype diversity matrix
+per_pop@hap.diversity.between # Haplotype diversity between the populations
+per_pop@hap.diversity.within # Haplotype diversity within the populations
+
+per_pop@region.stats@haplotype.counts # Esta matriz es muy fea, con poco sentido.
+
+
+#Fst
+per_pop@haplotype.F_ST #Fixation Index based on haplotype frequencies
+per_pop@nucleotide.F_ST #Fixation Index based on minor.allele frequencies
+hap.fst <- per_pop@hap.F_ST.vs.all[1,] #Fixation Index for each population against all other individuals (haplotype) this is NOT working! it gives you the same valur for all samples
+nuc.fst <-per_pop@nuc.F_ST.vs.all[1,] #Fixation Index for each population against tall other individuals (nucleotide)
+per.pop.pairwise.hap.fst <- per_pop@hap.F_ST.pairwise #Fixation Index for every pair of populations (haplotype)
+per.pop.pairwise.nuc.fst <- per_pop@nuc.F_ST.pairwise #Fixation Index for every pair of populations (nucleotide)
+
+```
+
+
+
+
+###GET stats to be recorded in the table per pop
+```{r}
+
+#1. Get number of individuals per pop (N)
+n.pop <- length(per_pop@populations)
+N <- vector(mode="numeric", length=0)
+for(i in 1:n.pop)
+{
+  N <- c(N, c(length(per_pop@populations[[i]]) ))
+}
+
+#2. Calculate haplotype count per population (H)
+#read fasta
+x <- read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop.fasta",format="fasta")
+#Calculate haplotypes
+h <- haplotype(x)
+#Calculate network
+net <- haploNet(h)
+#calculate matrix
+ind.hap <- as.data.frame(with(
+  stack(setNames(attr(h, "index"), rownames(h))), 
+  table(hap=ind, pop=rownames(x)[values]) ) )
+#Change matrix into lists
+Hap <-   filter (ind.hap, Freq>0) %>% group_by(., pop) %>% summarise(., H = n() ) #Counts how many aplotipes apprae per population
+count.Hap <- vector(mode="numeric", length=0)
+# order: "L_nw","L_po","L_nk","L_nv"
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_ya")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_ki")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_vl")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_tu")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_mo")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_cr")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_la")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_po")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_no")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_ba")%>%select(H)))
+count.Hap <- c(count.Hap, as.numeric(filter(Hap,pop == "c_ll_ur")%>%select(H)))
+
+#3. Count segregating sites
+segregating.sites <- per_pop@n.segregating.sites[1,]
+
+
+#4. Haplotype diversity with sd
+Neih <- function(M,biasflag=0) {
+  #Returns unbiased h (Nei Eq 8.4, p.178) and var(h) (Nei Eq 8.12, p.180)
+  # Neih$h is vector of h values, Neih$varh is vector of var(h) values
+  #  M is a vector of haplotype counts, or matrix with pops in columns
+  #  if 'biasflag' is set >0, the biased version of the statistic is returned.
+  
+  N <- colSums(M)
+  m <- M;  for (i in 1:ncol(M)) { m[,i] <- m[,i]/N[i] }
+  
+  biasedh = 1 - colSums(m*m)
+  if (biasflag>0) {
+    h <- biasedh
+  } else {
+    h <- biasedh / (1 - 1/N)
+  }
+  
+  varh = 2/N/(N-1) * ( 2*(N-2)*(colSums(m^3)-colSums(m^2)^2) + colSums(m^2) - colSums(m^2)^2 )
+  
+  list(h=h,varh=varh)
+}
+library("pegas")
+
+#Calculate how each sample relate to the rest (PENDING!)
+#read fasta
+x <- read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop.fasta",format="fasta")
+#Calculate haplotypes
+h <- haplotype(x)
+#Calculate network
+net <- haploNet(h)
+#calculate matrix 
+#cuidado! el orden es uno determinado
+#calculate matrix
+ind.hap <- as.data.frame(with(
+  stack(setNames(attr(h, "index"), rownames(h))), 
+  table(hap=ind, pop=rownames(x)[values]) ) ) %>% spread(. ,pop,Freq)
+rownames(ind.hap) <- ind.hap[,1]
+ind.hap <- ind.hap[,-1]
+#Cuidado!Necesitamos reordenar el orden es:
+ind.hap <- ind.hap[c("c_ll_ya", "c_ll_ki", "c_ll_vl", "c_ll_tu", "c_ll_mo", "c_ll_cr", "c_ll_la", "c_ll_po", "c_ll_no", "c_ll_ba", "c_ll_ur")]
+M<- as.matrix.data.frame(ind.hap)
+Hd <- Neih(M)$h[seq(1,11)]
+Hd.sd <- sqrt(Neih(M)$varh)[seq(1,11)]
+
+
+#5. Nucleotide diversity with sd
+library("ape")
+pi_ya <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-ya.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_ki <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-ki.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_vl <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-vl.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_tu <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-tu.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_mo <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-mo.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_cr <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-cr.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_la <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-la.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_po <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-po.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_no <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-no.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_ba <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-ba.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+pi_ur <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-ur.fasta",format="fasta"), 
+                   variance = TRUE, pairwise.deletion = FALSE)
+
+
+Pi <- c(pi_ya[1], pi_ki[1], pi_vl[1], pi_tu[1], pi_mo[1], pi_cr[1], pi_la[1], pi_po[1], pi_no[1], pi_ba[1], pi_ur[1])
+Pi.var <- c(pi_ya[2], pi_ki[2], pi_vl[2], pi_tu[2], pi_mo[2], pi_cr[2], pi_la[2], pi_po[2], pi_no[2], pi_ba[2], pi_ur[2])
+Pi.sd <- sqrt(Pi.var)
+#6. Get K, The nucleotide diversity (average pairwise nucleotide differences) within and between the populations.
+K <- per_pop@nuc.diversity.within[1,]
+
+#7. Get tajima's D and p-values
+tajimaD_ya <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-ya.fasta", format="fasta"))
+tajimaD_ki <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-ki.fasta", format="fasta"))
+tajimaD_vl <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-vl.fasta", format="fasta"))
+tajimaD_tu <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-tu.fasta", format="fasta"))
+tajimaD_mo <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-mo.fasta", format="fasta"))
+tajimaD_cr <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-cr.fasta", format="fasta"))
+tajimaD_la <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-la.fasta", format="fasta"))
+tajimaD_po <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-po.fasta", format="fasta"))
+tajimaD_no <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-no.fasta", format="fasta"))
+tajimaD_ba <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-ba.fasta", format="fasta"))
+tajimaD_ur <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_pop-ur.fasta", format="fasta"))
+
+tajimaD <- c(tajimaD_ya$D, tajimaD_ki$D, tajimaD_vl$D, tajimaD_tu$D, tajimaD_mo$D, tajimaD_cr$D, tajimaD_la$D, tajimaD_po$D, tajimaD_no$D, tajimaD_ba$D, tajimaD_ur$D)
+tajimaD.pvalue <- c(tajimaD_ya$Pval.normal, tajimaD_ki$Pval.normal, tajimaD_vl$Pval.normal, tajimaD_tu$Pval.normal, tajimaD_mo$Pval.normal, tajimaD_cr$Pval.normal, tajimaD_la$Pval.normal, tajimaD_po$Pval.normal, tajimaD_no$Pval.normal, tajimaD_ba$Pval.normal, tajimaD_ur$Pval.normal ) 
+
+#8. Fu and Li F
+Fu.Li.F <- per_pop@Fu.Li.F[1,]
+
+```
+
+
+###Stats TOTAL
+```{r}
+
+total <- readData("/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/diversity_neutrality_and_differentiation/fasta")
+get.sum.data(total)
+get.individuals(total)
+total <- set.populations(total,list(
+c("c_ll_ya_0138", "c_ll_ya_0139", "c_ll_ya_0140", "c_ll_ya_0142", "c_ll_ya_0143", "c_ll_ya_0145", "c_ll_ya_0146", "c_ll_ya_0147", "c_ll_ki_0086", "c_ll_ki_0088", "c_ll_ki_0090", "c_ll_ki_0091", "c_ll_ki_0092", "c_ll_ki_0093", "c_ll_ki_0094", "c_ll_ki_0095", "c_ll_ki_0096", "c_ll_ki_0097", "c_ll_ki_0098", "c_ll_ki_0099", "c_ll_ki_0100", "c_ll_ki_0101", "c_ll_ki_0102", "c_ll_vl_0107", "c_ll_vl_0108", "c_ll_vl_0109", "c_ll_vl_0110", "c_ll_vl_0112", "c_ll_vl_0113", "c_ll_vl_0128", "c_ll_vl_0132", "c_ll_tu_0153", "c_ll_tu_0157", "c_ll_tu_0158", "c_ll_tu_0159", "c_ll_tu_0165", "c_ll_tu_0166", "c_ll_mo_0181", "c_ll_mo_0184", "c_ll_mo_0186", "c_ll_mo_0187", "c_ll_mo_0188", "c_ll_mo_0189", "c_ll_mo_0190", "c_ll_mo_0191", "c_ll_cr_0205", "c_ll_cr_0206", "c_ll_cr_0207", "c_ll_cr_0208", "c_ll_cr_0209", "c_ll_cr_0212", "c_ll_la_0044", "c_ll_la_0047", "c_ll_la_0048", "c_ll_la_0052", "c_ll_la_0053", "c_ll_la_0054", "c_ll_po_0001", "c_ll_po_0002", "c_ll_po_0003", "c_ll_po_0004", "c_ll_po_0005", "c_ll_po_0007", "c_ll_po_0010", "c_ll_po_0011", "c_ll_po_0014", "c_ll_po_0017", "c_ll_po_0019", "c_ll_po_0105", "c_ll_po_0106", "c_ll_no_0063", "c_ll_no_0064", "c_ll_no_0065", "c_ll_no_0068", "c_ll_no_0069", "c_ll_no_0070", "c_ll_no_0071", "c_ll_no_0072", "c_ll_no_0074", "c_ll_no_0075", "c_ll_no_0076", "c_ll_no_0077", "c_ll_no_0078", "c_ll_no_0079", "c_ll_no_0080", "c_ll_no_0081", "c_ll_no_0082", "c_ll_ba_0214", "c_ll_ba_0215", "c_ll_ba_0216", "c_ll_ur_0194", "c_ll_ur_0195", "c_ll_ur_0196", "c_ll_ur_0199", "c_ll_ur_0200", "c_ll_ur_0203")
+))
+
+
+#Neutrality stats
+total <- neutrality.stats(total)
+
+
+#Diversity stats
+total <- F_ST.stats(total)
+total<- diversity.stats(total)
+
+hap.fst <- append(hap.fst, total@hap.F_ST.vs.all[1,]) #Fixation Index for each population against all other individuals (haplotype) this is NOT working! it gives you the same valur for all samples
+nuc.fst <-append(nuc.fst, total@nuc.F_ST.vs.all[1,]) #Fixation Index for each population against tall other individuals (nucleotide)
+
+```
+
+###GET stats to be recorded in the table as TOTAL
+```{r}
+
+#1. Get number of individuals per pop (N)
+n.pop <- length(total@populations)
+Ntot <- vector(mode="numeric", length=0)
+for(i in 1:n.pop)
+{
+  Ntot <- c(Ntot, c(length(total@populations[[i]]) ))
+}
+N<-append(N, Ntot)
+
+#2. Calculate haplotype count per population (H)
+#read fasta
+x <- read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_all.fasta",format="fasta")
+#Calculate haplotypes
+h <- haplotype(x)
+#Calculate network
+net <- haploNet(h)
+#calculate matrix
+ind.hap <- as.data.frame(with(
+  stack(setNames(attr(h, "index"), rownames(h))), 
+  table(hap=ind, pop=rownames(x)[values]) ) )
+#Change matrix into lists
+Hap <-  ind.hap %>% filter ( Freq>0) %>% group_by(., pop) %>% summarise(., H = n() ) #Counts how many haplotipes apprae per population
+# order: "L_nw","L_po","L_nk","L_nv", "total"
+count.Hap <- append( count.Hap,  as.numeric(filter(Hap,pop == "sample")%>%select(H)))
+
+
+#3. Count segregating sites
+segregating.sites <- append(segregating.sites, total@n.segregating.sites[1,])
+
+
+#4. Haplotype diversity with sd
+Neih <- function(M,biasflag=0) {
+  #Returns unbiased h (Nei Eq 8.4, p.178) and var(h) (Nei Eq 8.12, p.180)
+  # Neih$h is vector of h values, Neih$varh is vector of var(h) values
+  #  M is a vector of haplotype counts, or matrix with pops in columns
+  #  if 'biasflag' is set >0, the biased version of the statistic is returned.
+  
+  N <- colSums(M)
+  m <- M;  for (i in 1:ncol(M)) { m[,i] <- m[,i]/N[i] }
+  
+  biasedh = 1 - colSums(m*m)
+  if (biasflag>0) {
+    h <- biasedh
+  } else {
+    h <- biasedh / (1 - 1/N)
+  }
+  
+  varh = 2/N/(N-1) * ( 2*(N-2)*(colSums(m^3)-colSums(m^2)^2) + colSums(m^2) - colSums(m^2)^2 )
+  
+  list(h=h,varh=varh)
+}
+library("pegas") 
+
+M <-  matrix(with(
+  stack(setNames(attr(h, "index"), rownames(h))), 
+  table(hap=ind, pop=rownames(x)[values]) ),ncol=1, byrow=F) 
+Hd <- append(Hd, Neih(M)$h[c(1)]) 
+Hd.sd <- append(Hd.sd, sqrt(Neih(M)$varh)[c(1)] ) 
+
+
+#5. Nucleotide diversity with sd
+library("ape")
+pi_tot <- nuc.div(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_all.fasta",format="fasta"), 
+                    variance = TRUE, pairwise.deletion = FALSE)
+
+
+Pi <- append(Pi, pi_tot[1])
+Pi.var <- append(Pi.var, pi_tot[2])
+Pi.sd <- append(Pi.sd,sqrt(pi_tot[2]))
+#6. Get K, The nucleotide diversity (average pairwise nucleotide differences) within and between the populations.
+K <- append(K, total@nuc.diversity.within[1,]) 
+
+#7. Get tajima's D and p-values
+tajimaD_tot <- tajima.test(read.dna(file="/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/ll_mitogenome_variants_withNs_noRS_ingroup_w_new_Balcans_wo_highNs_reordered2_wo_bibliography_mongoliarenamed_all.fasta",format="fasta"))
+
+tajimaD <- append(tajimaD,  tajimaD_tot$D)
+tajimaD.pvalue <- append(tajimaD.pvalue, tajimaD_tot$Pval.normal) 
+
+#8. Fu and Li F
+Fu.Li.F <- append(Fu.Li.F, total@Fu.Li.F[1,])
+
+```
+
+
+###Create dataframe
+Lo calculo identico al por época para hacer rbind
+```{r}
+
+Population <- 
+c("Yakutia","Kirov","Vladivostok","Tuva", "Mongolia", "Carpatian", "Latvia", "Poland", "Norway", "Balcans", "Urals", "Total")
+
+stats.per.pop <- data.frame( Population, N, count.Hap,segregating.sites, Hd, Hd.sd, Pi, Pi.sd,K, tajimaD, tajimaD.pvalue, Fu.Li.F, hap.fst, nuc.fst)
+
+write.csv(stats.per.pop, "/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/tables/diversity_and_differentiation.csv", row.names=FALSE)
+
+```
+
+
+
+##PLOTS
+Multiple plot function
+
+ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+- cols:   Number of columns in layout
+- layout: A matrix specifying the layout. If present, 'cols' is ignored.
+
+If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+then plot 1 will go in the upper left, 2 will go in the upper right, and
+3 will go all the way across the bottom.
+
+```{r}
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  require(grid)
+  
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+  
+  numPlots = length(plots)
+  
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                     ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+  
+  if (numPlots==1) {
+    print(plots[[1]])
+    
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+    
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+      
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+###############################################################################################################################################################
+
+# Plot genetic stats.per.pop of each pop
+# I can charge direcly fron here if just drawing
+library(magrittr)
+library(dplyr)
+library(ggplot2)
+stats.per.pop <- read.csv("/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/tables/diversity_and_differentiation.csv",header=T,dec=".") %>% arrange(Pi)
+
+#Lo dibujo:
+#
+par(mar = c(5, 5, 1, 1), mgp = c(3.5, 2, 0), xaxs= "i", yaxs= "i", bty="l")
+
+# using ggplot2 
+pd <- position_dodge(.1) # move them .05 to the left and right
+stats.per.pop$Population <- factor(stats.per.pop$Population, levels=as.vector(stats.per.pop$Population))
+
+#Plot Haplotype diversity
+ggplot(stats.per.pop, aes(x=Population, y=Hd)) + 
+  geom_errorbar(aes(ymin=Hd-Hd.sd, ymax=Hd+Hd.sd), width=.1, position=pd) +
+  geom_line(position=pd) +
+  geom_point(position=pd)+
+  theme_bw() +
+  #scale_colour_manual(values=c("red","black","blue"))+
+  theme(axis.title.x = element_text(face="bold", size=20),axis.text.x = element_text(angle = 90, hjust = 1, size=20))+
+  theme(axis.title.y = element_text(face="bold", size=20),axis.text.y = element_text( hjust = 1, size=20))+
+  ggtitle("Haplotype diversity")+ 
+  theme(legend.text=element_text(size=20),plot.title=element_text(size=20))+
+  theme(legend.justification=c(1,1), legend.position = "bottom")
+
+
+dev.print(device=postscript, "/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/diversity_neutrality_and_differentiation/Hd_plot.eps", onefile=FALSE, horizontal=FALSE)
+
+
+
+# Plot Nucleotide diversity
+ggplot(stats.per.pop, aes(x=Population, y=Pi)) + 
+  geom_errorbar(aes(ymin=Pi-Pi.sd, ymax=Pi+Pi.sd), width=.1, position=pd) +
+  geom_line(position=pd) +
+  geom_point(position=pd)+
+  theme_bw() +
+  #scale_colour_manual(values=c("red","black","blue"))+
+  theme(axis.title.x = element_text(face="bold", size=20),axis.text.x = element_text(angle = 90, hjust = 1, size=20))+
+  theme(axis.title.y = element_text(face="bold", size=20),axis.text.y = element_text( hjust = 1, size=20))+
+  ggtitle("Nucleotide diversity")+ 
+  theme(legend.text=element_text(size=20),plot.title=element_text(size=20) )+
+  theme(legend.justification=c(1,1), legend.position="bottom") 
+
+dev.print(device=postscript, "/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/diversity_neutrality_and_differentiation/Pi_plot.eps", onefile=FALSE, horizontal=FALSE)
+
+# Plot FST
+ggplot(stats.per.pop, aes(x=Population, y=hap.fst) ) + 
+  geom_point(position=pd, size = 3)+
+  theme_bw() +
+  scale_colour_manual(values=c("red","black","blue"))+
+  theme(axis.title.x = element_text(face="bold", size=20),axis.text.x = element_text(angle = 90, hjust = 1, size=20))+
+  theme(axis.title.y = element_text(face="bold", size=20),axis.text.y = element_text( hjust = 1, size=20))+
+  ggtitle("Genetic differentiation")+ 
+  theme(legend.text=element_text(size=20),plot.title=element_text(size=20))+
+  theme(legend.justification=c(1,0), legend.position=c(1,0)) #legend top rigth
+
+dev.print(device=postscript, "/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/diversity_neutrality_and_differentiation/FST_hap_plot.eps", onefile=FALSE, horizontal=FALSE)
+
+ggplot(stats.per.pop, aes(x=Population, y=nuc.fst) ) + 
+  geom_point(position=pd, size = 3)+
+  theme_bw() +
+  # scale_colour_manual(values=c("red","black","blue"))+
+  theme(axis.title.x = element_text(face="bold", size=20),axis.text.x = element_text(angle = 90, hjust = 1, size=20))+
+  theme(axis.title.y = element_text(face="bold", size=20),axis.text.y = element_text( hjust = 1, size=20))+
+  ggtitle("Genetic differentiation")+ 
+  theme(legend.text=element_text(size=20),plot.title=element_text(size=20))+
+  theme(legend.justification=c(1,0), legend.position=c(1,0)) #legend top rigth
+
+dev.print(device=postscript, "/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/diversity_neutrality_and_differentiation/FST_nuc_plot.eps", onefile=FALSE, horizontal=FALSE)
+
+
+# Plot K Average number of nucleotide differences
+ggplot(stats.per.pop, aes(x=Population, y=K) ) + 
+  geom_point(position=pd, size = 3)+
+  theme_bw() +
+  # scale_colour_manual(values=c("red","black","blue"))+
+  theme(axis.title.x = element_text(face="bold", size=20),axis.text.x = element_text(angle = 90, hjust = 1, size=20))+
+  theme(axis.title.y = element_text(face="bold", size=20),axis.text.y = element_text( hjust = 1, size=20))+
+  ggtitle("Average number of nucleotide differences")+ 
+  theme(legend.text=element_text(size=20),plot.title=element_text(size=20))+
+  theme(legend.justification=c(1,1), legend.position=c(1,1)) #legend top rigth
+
+dev.print(device=postscript, "/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/diversity_neutrality_and_differentiation/K_plot.eps", onefile=FALSE, horizontal=FALSE)
+
+#Put all plots together (reusing the legend)
+#Plot Haplotype diversity
+p1<-ggplot(stats.per.pop, aes(x=Population, y=Hd)) + 
+  geom_errorbar(aes(ymin=Hd-Hd.sd, ymax=Hd+Hd.sd), width=.1, position=pd) +
+  geom_line(position=pd) +
+  geom_point(position=pd)+
+  theme_bw() +
+  # scale_colour_manual(values=c("red","black","blue")) + theme(legend.position="none") +
+  theme( axis.text.x = element_blank(),axis.title.x = element_blank()) +
+  theme(axis.title.y = element_text(face="bold", size=7),axis.text.y = element_text( hjust = 1, size=7))+
+  ggtitle("Haplotype diversity")+ 
+  theme(plot.title=element_text(size=7, face="bold"))
+
+
+# Plot Nucleotide diversity
+p2<-ggplot(stats.per.pop, aes(x=Population, y=Pi)) + 
+  geom_errorbar(aes(ymin=Pi-Pi.sd, ymax=Pi+Pi.sd), width=.1, position=pd) +
+  geom_line(position=pd) +
+  geom_point(position=pd)+
+  theme_bw() +
+  # scale_colour_manual(values=c("red","black","blue")) + theme(legend.position="none") +
+  theme( axis.text.x = element_blank(),axis.title.x = element_blank())+
+  theme(axis.title.y = element_text(face="bold", size=7),axis.text.y = element_text( hjust = 1, size=6))+
+  ggtitle("Nucleotide diversity")+ 
+  theme(plot.title=element_text(size=7, face="bold") )
+
+
+
+# Plot FST
+p3<-ggplot(stats.per.pop, aes(x=Population, y=nuc.fst) ) + 
+  geom_point(position=pd)+
+  theme_bw() +
+  # scale_colour_manual(values=c("red","black","blue")) + theme(legend.position="none") +
+  theme(axis.title.x = element_text(face="bold", size=7),axis.text.x = element_text(angle = 90, hjust = 1, size=7))+
+  theme(axis.title.y = element_text(face="bold", size=7),axis.text.y = element_text( hjust = 1, size=7))+
+  ggtitle("Genetic differentiation")+ 
+  theme(plot.title=element_text(size=7, face="bold"))
+
+
+
+# Plot K Average number of nucleotide differences
+p4<-ggplot(stats.per.pop, aes(x=Population, y=K) ) + 
+  geom_point(position=pd)+
+  theme_bw() +
+  # scale_colour_manual(values=c("red","black","blue")) + theme(legend.position="none") +
+  theme(axis.title.x = element_text(face="bold", size=7),axis.text.x = element_text(angle = 90, hjust = 1, size=7))+
+  theme(axis.title.y = element_text(face="bold", size=7),axis.text.y = element_text( hjust = 1, size=7))+
+  ggtitle("Average number of nucleotide differences")+ 
+  theme(plot.title=element_text(size=7, face="bold"))
+
+multiplot(p1, p3, p2, p4, cols=2)
+dev.print(device=postscript, "/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/diversity_neutrality_and_differentiation/stats_plot.eps", onefile=FALSE, horizontal=FALSE)
+
+
+```
