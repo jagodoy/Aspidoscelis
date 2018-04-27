@@ -10,11 +10,14 @@ lkjsdlkjasdlkjasldkj
 #Inputs
 Los archivos originales de inpput son jkhsdklfjhlkjshadfkljhasdf
 
-la ruta del multifasta es: /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas
-la carpeta dond evamos a trabajar es: /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/
+la ruta del multifasta es: /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb315_612.fas
+el nombre de secuencia tiene la siguiente estructura: Prefijo_Muestra_Localidad_Linaje_Sublinaje
+la carpeta dond evamos a trabajar es: /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Carpeta_trabajo_Rstudio
 
 #Separar las secuencias por poblaciones
 Necesito un archivo donde estén marcadas las secuencias solo por poblaciones
+$$ No funciona bien. Elimina la primera fila (primer n0ombre de secuencia)
+
 ```{bash}
 cd /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/
 
@@ -33,7 +36,7 @@ done < "$1"
 _______________________________________
 
 chmod +x remove_sample_number.sh
-./remove_sample_number.sh /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas > /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_pop.fasta  
+./remove_sample_number.sh /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb315_612.fas > /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb315_612_loc.fasta  
 
 
 
@@ -57,6 +60,13 @@ chmod +x remove_sample_tag.sh
 ./remove_sample_tag.sh /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas > /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_all.fasta  
 ```
 
+#Separar las secuencias por linajes
+Necesito un archivo donde estén marcadas las secuencias solo por linajes
+
+
+
+#Separar las secuencias por sublinajes
+Necesito un archivo donde estén marcadas las secuencias solo por sublinajes
 
 #Fasta files separados por poblaciones a analizar por separado:
 $Esto no está arreglado!
@@ -81,7 +91,7 @@ library(ggplot2)
 library(RColorBrewer)
 library(tidyr)
 
-setwd("/Users/Elena/ownCloud/Eurasian_lynx_phylogeography/mitogenomes_lynxes/haplotypes/")
+setwd("/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/")
 
 ```
 
@@ -138,10 +148,10 @@ plot_network <- function(fastafile, outfile, leg.x, leg.y, text.size ) {
   data.frame(lapply(bob, as.character), )
 
 #Per_pop samples
-all.df <- list_haplotypes("/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas") %>%
-  mutate (hap=paste("H_",sprintf("%02d",as.numeric(as.roman(as.character(hap)))),sep = "")    ,
+all.df <- list_haplotypes("/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb315_612.fas") %>%
+  mutate (hap=paste("H_",sprintf("%03d",as.numeric(as.roman(as.character(hap)))),sep = "")    ,
           sample=pop )%>%
-  separate(pop, c("sp", "locus", "samplecode", "pop"), sep = "_")  %>%
+  separate(pop, c("sp", "locus", "samplecode", "pop", "lineage", "sublineage"), sep = "_")  %>%
   arrange(hap) 
 
 ind.hap.pop <- all.df %>%
@@ -149,13 +159,37 @@ ind.hap.pop <- all.df %>%
                 summarise(count=n()) %>%
                 spread(key = pop,value = count,fill=0)
 
-write.csv(ind.hap.pop, "/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_pop_haplotypes.csv", row.names = FALSE)
+write.csv(ind.hap.pop, "/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Tablas_haplotipos/aspcytb315_612_pop_haplotypes.csv", row.names = FALSE)
+
+#Per_lineage samples
+ind.hap.lineage <- all.df %>%
+                group_by(hap,lineage)%>%
+                summarise(count=n()) %>%
+                spread(key = lineage,value = count,fill=0)
+
+write.csv(ind.hap.lineage, "/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Tablas_haplotipos/aspcytb315_612_lineage_haplotypes.csv", row.names = FALSE)
+
+#Pop_vs_Lineage
+ind.pop.lineage <- all.df %>%
+                group_by(pop,lineage)%>%
+                summarise(count=n()) %>%
+                spread(key = lineage,value = count,fill=0)
+
+write.csv(ind.pop.lineage, "/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Tablas_haplotipos/aspcytb315_612_pop_lineages.csv", row.names = FALSE)
+
+#Pop_vs_sublineage
+ind.pop.sublineage <- all.df %>%
+                group_by(pop,sublineage)%>%
+                summarise(count=n()) %>%
+                spread(key = sublineage,value = count,fill=0)
+
+write.csv(ind.pop.sublineage, "/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Tablas_haplotipos/aspcytb315_612_pop_sublineages.csv", row.names = FALSE)
 
 #Draw haplotypes piecharts per location
-ind.hap.pop <- read.csv("/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_pop_haplotypes.csv") %>%
+ind.hap.pop2 <- read.csv("/Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Tablas_haplotipos/aspcytb315_612_pop_haplotypes.csv") %>%
    gather(pop, Freq, -hap)
 $Si quieres contar por haplogrupo e vex de por haplotipo cambiar por qué agrupar
-Hap <-   filter (ind.hap.pop, Freq>0) %>% group_by(., pop) %>% summarise(., sample.size = sum(Freq) ) #Counts how many haplotypes appear per population 
+Hap <-   filter (ind.hap.pop2, Freq>0) %>% group_by(., pop) %>% summarise(., sample.size = sum(Freq) ) #Counts how many haplotypes appear per population 
 hap_df<- full_join(ind.hap.pop, Hap) %>%
   mutate (hap_freq=Freq/sample.size )
 
