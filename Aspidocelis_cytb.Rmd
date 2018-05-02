@@ -16,24 +16,24 @@ la carpeta dond evamos a trabajar es: /Users/jagodoy/Desktop/Reanalisis_Aspidosc
 
 #Separar las secuencias por poblaciones
 Necesito un archivo donde estén marcadas las secuencias solo por poblaciones
-$$ No funciona bien. Elimina la primera fila (primer n0ombre de secuencia)
 
 ```{bash}
 cd /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/
 
 nano remove_sample_number.sh
 ________________________________________
-while IFS='' read -r line || [[ -n "$line" ]]; 
+while IFS='' read -r line || [[ -n "$line" ]];
 do
-if [[ $line = \>*  ]] 
-	then
-	cut -f1,2,4 -d "_" 	
-	else
-	echo "${line}"
-	fi ;
+if [[ $line = \>*  ]]
+       then
+       echo "${line}" | cut -f1,2,4 -d "_"
+       else
+       echo "${line}"
+       fi ;
 
 done < "$1"
 _______________________________________
+
 
 chmod +x remove_sample_number.sh
 ./remove_sample_number.sh /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb315_612.fas > /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb315_612_loc.fasta  
@@ -43,21 +43,21 @@ chmod +x remove_sample_number.sh
 
 nano remove_sample_tag.sh
 ________________________________________
-while IFS='' read -r line || [[ -n "$line" ]]; 
+while IFS='' read -r line || [[ -n "$line" ]];
 do
-if [[ $line = \>*  ]] 
-	then
-	cut -f1,2 -d "_" 		
-	else
-	echo "${line}"
-	fi ;
+if [[ $line = \>*  ]]
+       then
+       echo "${line}" | cut -f1,2 -d "_"
+       else
+       echo "${line}"
+       fi ;
 
 done < "$1"
 _______________________________________
 
 chmod +x remove_sample_tag.sh
 
-./remove_sample_tag.sh /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612.fas > /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb317_612_all.fasta  
+./remove_sample_tag.sh /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb315_612.fas > /Users/jagodoy/Desktop/Reanalisis_Aspidoscelis_2018/Datasets/aspcytb315_612_all.fasta  
 ```
 
 #Separar las secuencias por linajes
